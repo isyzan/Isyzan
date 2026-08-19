@@ -2,37 +2,45 @@ import requests
 import re
 import random
 
-print('🔥 ISYZAN VPN — АВТООБНОВЛЕНИЕ')
+print('🔥 ISYZAN VPN START')
 
-# 1. Скачиваем список бесплатных серверов
-url = 'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt'
-text = requests.get(url, timeout=10).text
-
-# 2. Находим все IP:PORT
-proxies = re.findall(r'\d+\.\d+\.\d+\.\d+:\d+', text)
-print(f'Найдено {len(proxies)} серверов')
-
-# 3. Проверяем случайные
-random.shuffle(proxies)
-for proxy in proxies[:10]:
-    try:
-        r = requests.get('https://httpbin.org/ip', 
-                         proxies={'http': proxy, 'https': proxy}, 
-                         timeout=3)
-        if r.status_code == 200:
-            print(f'✅ Рабочий: {proxy}')
-            
-            # 4. Отправляем запрос (замени URL на свой)
-            renew = requests.get('https://www.google.com', 
-                                 proxies={'http': proxy, 'https': proxy},
-                                 timeout=5)
-            
-            if renew.status_code == 200:
-                print(f'🎉 ПОДПИСКА ОБНОВЛЕНА через {proxy}')
+try:
+    # Скачиваем список прокси
+    url = 'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt'
+    response = requests.get(url, timeout=10)
+    text = response.text
+    
+    # Находим все IP:PORT
+    proxies = re.findall(r'\d+\.\d+\.\d+\.\d+:\d+', text)
+    print(f'Найдено {len(proxies)} серверов')
+    
+    if not proxies:
+        print('❌ Прокси не найдены')
+        exit(1)
+    
+    # Перемешиваем и проверяем
+    random.shuffle(proxies)
+    success = False
+    
+    for proxy in proxies[:15]:
+        try:
+            print(f'Проверяю {proxy}...')
+            test = requests.get('https://httpbin.org/ip', 
+                                proxies={'http': proxy, 'https': proxy}, 
+                                timeout=3)
+            if test.status_code == 200:
+                print(f'✅ Рабочий: {proxy}')
                 
-                # 5. Сохраняем конфиг ISYZAN VPN
-                config = f"""
-# ISYZAN VPN CONFIG
+                # Пытаемся обновить подписку
+                renew = requests.get('https://www.google.com', 
+                                     proxies={'http': proxy, 'https': proxy},
+                                     timeout=5)
+                
+                if renew.status_code == 200:
+                    print(f'🎉 ПОДПИСКА ОБНОВЛЕНА через {proxy}')
+                    
+                    # Сохраняем конфиг
+                    config = f"""# ISYZAN VPN CONFIG
 # Сервер: {proxy}
 client
 dev tun
@@ -49,10 +57,19 @@ verb 3
 isyzan
 isyzan
 </auth-user-pass>
-                """
-                with open('isyzan_config.ovpn', 'w') as f:
-                    f.write(config)
-                print('📁 Конфиг ISYZAN сохранён — скачай!')
-                break
-    except:
-        pass
+"""
+                    with open('isyzan_config.ovpn', 'w') as f:
+                        f.write(config)
+                    print('📁 Конфиг ISYZAN сохранён')
+                    success = True
+                    break
+        except Exception as e:
+            print(f'Ошибка на {proxy}: {e}')
+    
+    if not success:
+        print('❌ Не удалось найти рабочий прокси')
+        exit(1)
+        
+except Exception as e:
+    print(f'❌ Критическая ошибка: {e}')
+    exit(1)
