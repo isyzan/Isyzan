@@ -1,0 +1,31 @@
+name: ISYZAN VPN Auto-Renew
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install requests
+      
+      - name: Run ISYZAN script
+        run: |
+          python isyzan.py
+          echo "✅ Скрипт выполнен"
+      
+      - name: Upload config
+        uses: actions/upload-artifact@v4
+        with:
+          name: isyzan-config
+          path: isyzan_config.ovpn
