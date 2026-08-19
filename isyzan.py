@@ -2,43 +2,64 @@ import requests
 import re
 import random
 import sys
+import time
 
 print("🚀 ISYZAN VPN START", flush=True)
 
-try:
-    url = 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000'
-    print("📡 Загружаю список прокси...", flush=True)
-    
-    response = requests.get(url, timeout=15)
-    text = response.text
-    
-    proxies = re.findall(r'\d+\.\d+\.\d+\.\d+:\d+', text)
-    print(f"✅ Найдено {len(proxies)} прокси", flush=True)
-    
-    if not proxies:
-        print("❌ Нет прокси", flush=True)
-        with open('isyzan_config.ovpn', 'w') as f:
-            f.write("# ISYZAN VPN - Нет рабочих прокси")
-        sys.exit(0)
-    
-    random.shuffle(proxies)
-    success = False
-    
-    for proxy in proxies[:20]:
-        try:
-            print(f"🔍 Проверяю: {proxy}", flush=True)
+# МНОГО источников для надёжности
+SOURCES = [
+    'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000',
+    'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
+    'https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt',
+    'https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt'
+]
+
+all_proxies = []
+
+print("📡 Загружаю списки прокси...", flush=True)
+
+for url in SOURCES:
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            found = re.findall(r'\d+\.\d+\.\d+\.\d+:\d+', response.text)
+            all_proxies.extend(found)
+            print(f"✅ {url.split('/')[-1][:20]}... -> {len(found)} прокси", flush=True)
+    except Exception as e:
+        print(f"⚠️ Ошибка загрузки: {str(e)[:30]}", flush=True)
+
+# Удаляем дубликаты
+all_proxies = list(set(all_proxies))
+print(f"✅ ВСЕГО НАЙДЕНО: {len(all_proxies)} прокси", flush=True)
+
+if not all_proxies:
+    print("❌ Нет прокси, выход", flush=True)
+    with open('isyzan_config.ovpn', 'w') as f:
+        f.write("# ISYZAN VPN - Нет прокси, попробуй позже")
+    sys.exit(0)
+
+# Проверяем прокси
+random.shuffle(all_proxies)
+success = False
+
+print("🔍 Проверяю прокси (это может занять 10-20 секунд)...", flush=True)
+
+for i, proxy in enumerate(all_proxies[:30]):
+    try:
+        print(f"   {i+1}/30: {proxy}...", flush=True, end='')
+        test = requests.get(
+            'https://httpbin.org/ip',
+            proxies={'http': proxy, 'https': proxy},
+            timeout=3
+        )
+        if test.status_code == 200:
+            print(" ✅ РАБОТАЕТ!", flush=True)
             
-            test = requests.get(
-                'https://httpbin.org/ip',
-                proxies={'http': proxy, 'https': proxy},
-                timeout=3
-            )
-            
-            if test.status_code == 200:
-                print(f"✅ РАБОЧИЙ: {proxy}", flush=True)
-                
-                config = f"""# ISYZAN VPN CONFIG
-# Сервер: {proxy}
+            # Создаём конфиг
+            config = f"""# ISYZAN VPN CONFIG
+# Активный сервер: {proxy}
+# Обновлено: {time.strftime('%Y-%m-%d %H:%M:%S')}
+
 client
 dev tun
 proto tcp
@@ -55,25 +76,23 @@ isyzan
 isyzan
 </auth-user-pass>
 """
-                with open('isyzan_config.ovpn', 'w') as f:
-                    f.write(config)
-                
-                print("✅ КОНФИГ СОЗДАН", flush=True)
-                success = True
-                break
-                
-        except Exception as e:
-            print(f"⚠️ Ошибка: {str(e)[:40]}", flush=True)
-            continue
-    
-    if not success:
-        print("❌ Нет рабочих прокси", flush=True)
-        with open('isyzan_config.ovpn', 'w') as f:
-            f.write("# ISYZAN VPN - Попробуй позже")
-        
-except Exception as e:
-    print(f"❌ ОШИБКА: {str(e)[:100]}", flush=True)
+            with open('isyzan_config.ovpn', 'w') as f:
+                f.write(config)
+            
+            print("🎉 КОНФИГ СОЗДАН!", flush=True)
+            success = True
+            break
+        else:
+            print(" ❌ не ответил", flush=True)
+    except Exception as e:
+        print(f" ⚠️ ошибка", flush=True)
+        continue
+
+if not success:
+    print("❌ НЕ НАЙДЕНО РАБОЧИХ ПРОКСИ", flush=True)
     with open('isyzan_config.ovpn', 'w') as f:
-        f.write(f"# ISYZAN VPN - Ошибка: {str(e)[:100]}")
+        f.write("""# ISYZAN VPN - ВРЕМЕННО НЕТ РАБОЧИХ ПРОКСИ
+# Попробуй запустить Actions снова через 5-10 минут
+# Или скачай конфиг с другого источника""")
 
 print("✅ ISYZAN VPN ЗАВЕРШЁН", flush=True)
