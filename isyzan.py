@@ -4,66 +4,39 @@ import random
 import sys
 import time
 
-print("🚀 ISYZAN VPN START", flush=True)
+print("🚀 ISYZAN VPN V2 START", flush=True)
 
-# МНОГО источников для надёжности
-SOURCES = [
-    'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000',
-    'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
-    'https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt',
-    'https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt'
+# Прямые ссылки на готовые OpenVPN-конфиги (бесплатные серверы)
+CONFIG_SOURCES = [
+    'https://www.vpngate.net/api/iphone/',
+    'https://raw.githubusercontent.com/NeverWonderLand/openvpn-servers/master/servers.txt',
+    'https://raw.githubusercontent.com/hwdsl2/openvpn-servers/master/servers.txt'
 ]
 
-all_proxies = []
+all_configs = []
 
-print("📡 Загружаю списки прокси...", flush=True)
+print("📡 Загружаю готовые конфиги...", flush=True)
 
-for url in SOURCES:
+for url in CONFIG_SOURCES:
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=15)
         if response.status_code == 200:
-            found = re.findall(r'\d+\.\d+\.\d+\.\d+:\d+', response.text)
-            all_proxies.extend(found)
-            print(f"✅ {url.split('/')[-1][:20]}... -> {len(found)} прокси", flush=True)
-    except Exception as e:
-        print(f"⚠️ Ошибка загрузки: {str(e)[:30]}", flush=True)
-
-# Удаляем дубликаты
-all_proxies = list(set(all_proxies))
-print(f"✅ ВСЕГО НАЙДЕНО: {len(all_proxies)} прокси", flush=True)
-
-if not all_proxies:
-    print("❌ Нет прокси, выход", flush=True)
-    with open('isyzan_config.ovpn', 'w') as f:
-        f.write("# ISYZAN VPN - Нет прокси, попробуй позже")
-    sys.exit(0)
-
-# Проверяем прокси
-random.shuffle(all_proxies)
-success = False
-
-print("🔍 Проверяю прокси (это может занять 10-20 секунд)...", flush=True)
-
-for i, proxy in enumerate(all_proxies[:30]):
-    try:
-        print(f"   {i+1}/30: {proxy}...", flush=True, end='')
-        test = requests.get(
-            'https://httpbin.org/ip',
-            proxies={'http': proxy, 'https': proxy},
-            timeout=3
-        )
-        if test.status_code == 200:
-            print(" ✅ РАБОТАЕТ!", flush=True)
-            
-            # Создаём конфиг
-            config = f"""# ISYZAN VPN CONFIG
-# Активный сервер: {proxy}
-# Обновлено: {time.strftime('%Y-%m-%d %H:%M:%S')}
-
-client
+            # Ищем блоки OpenVPN-конфигов (начинаются с "client")
+            configs = re.findall(r'client.*?(?=client|$)', response.text, re.DOTALL)
+            if configs:
+                all_configs.extend(configs)
+                print(f"✅ Найдено {len(configs)} конфигов из {url[:30]}...", flush=True)
+            else:
+                # Если не нашли — ищем IP:PORT для ручной сборки
+                ips = re.findall(r'\d+\.\d+\.\d+\.\d+:\d+', response.text)
+                if ips:
+                    print(f"✅ Найдено {len(ips)} серверов из {url[:30]}...", flush=True)
+                    # Собираем конфиг вручную
+                    for ip in ips[:10]:
+                        cfg = f"""client
 dev tun
 proto tcp
-remote {proxy}
+remote {ip}
 resolv-retry infinite
 nobind
 persist-key
@@ -72,27 +45,38 @@ remote-cert-tls server
 cipher AES-256-CBC
 verb 3
 <auth-user-pass>
-isyzan
-isyzan
+vpn
+vpn
 </auth-user-pass>
 """
-            with open('isyzan_config.ovpn', 'w') as f:
-                f.write(config)
-            
-            print("🎉 КОНФИГ СОЗДАН!", flush=True)
-            success = True
-            break
-        else:
-            print(" ❌ не ответил", flush=True)
+                        all_configs.append(cfg)
     except Exception as e:
-        print(f" ⚠️ ошибка", flush=True)
-        continue
+        print(f"⚠️ Ошибка: {str(e)[:30]}", flush=True)
 
-if not success:
-    print("❌ НЕ НАЙДЕНО РАБОЧИХ ПРОКСИ", flush=True)
+print(f"✅ ВСЕГО НАЙДЕНО: {len(all_configs)} конфигов", flush=True)
+
+if not all_configs:
+    print("❌ Нет конфигов, выход", flush=True)
     with open('isyzan_config.ovpn', 'w') as f:
-        f.write("""# ISYZAN VPN - ВРЕМЕННО НЕТ РАБОЧИХ ПРОКСИ
-# Попробуй запустить Actions снова через 5-10 минут
-# Или скачай конфиг с другого источника""")
+        f.write("# ISYZAN VPN - Нет конфигов, попробуй позже")
+    sys.exit(0)
 
-print("✅ ISYZAN VPN ЗАВЕРШЁН", flush=True)
+# Берём случайный конфиг
+random.shuffle(all_configs)
+selected = all_configs[0]
+
+# Добавляем метку времени
+selected = f"# ISYZAN VPN CONFIG\n# Обновлено: {time.strftime('%Y-%m-%d %H:%M:%S')}\n{selected}"
+
+# Сохраняем
+with open('isyzan_config.ovpn', 'w') as f:
+    f.write(selected)
+
+print("🎉 КОНФИГ СОЗДАН!", flush=True)
+print("📁 Сохранён как isyzan_config.ovpn", flush=True)
+
+# Дополнительно сохраняем в Artifacts (для скачивания)
+with open('isyzan_config_backup.ovpn', 'w') as f:
+    f.write(selected)
+
+print("✅ ISYZAN VPN V2 ЗАВЕРШЁН", flush=True)
